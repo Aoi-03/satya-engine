@@ -25,13 +25,22 @@ const path = require('path');
 const ee   = require('@google/earthengine');
 
 // ── Key file ──────────────────────────────────────────────────────────────────
-// Always load from config/gee-key.json relative to this file's location.
-// That puts it at: backend/config/gee-key.json
-const KEY_PATH  = path.resolve(__dirname, '../config/gee-key.json');
-const privateKey = require(KEY_PATH);
+// Attempt to load from environment variable first (for Railway/production),
+// then fallback to local config/gee-key.json
+let privateKey = null;
+try {
+  if (process.env.GEE_SERVICE_ACCOUNT_KEY) {
+    privateKey = JSON.parse(process.env.GEE_SERVICE_ACCOUNT_KEY);
+  } else {
+    const KEY_PATH = path.resolve(__dirname, '../config/gee-key.json');
+    privateKey = require(KEY_PATH);
+  }
+} catch (err) {
+  console.warn('[GEE] Warning: Could not load GEE service account key.', err.message);
+}
 
 // Project: prefer explicit env override, fall back to key file's project_id
-const GEE_PROJECT = process.env.GEE_PROJECT || privateKey.project_id;
+const GEE_PROJECT = process.env.GEE_PROJECT || (privateKey ? privateKey.project_id : null);
 
 // ── Singleton init ────────────────────────────────────────────────────────────
 let _ready      = false;
@@ -48,6 +57,7 @@ function initGEE() {
   return new Promise((resolve, reject) => {
     if (_ready)      return resolve();
     if (_initError)  return reject(_initError);
+    if (!privateKey) return reject(new Error('GEE service account key not configured (missing GEE_SERVICE_ACCOUNT_KEY env).'));
 
     _waiters.push({ resolve, reject });
     if (_inFlight) return;          // another call already kicked off auth
@@ -379,11 +389,10 @@ async function _generateHistoricalThumbnails(eeGeom, t2ISO) {
 }
 
 /**
- * Returns true — GEE is always available because the key file is bundled.
- * Kept for API compatibility with the controller.
+ * Returns true if the GEE private key was successfully loaded.
  */
 function isGEEConfigured() {
-  return true;
+  return !!privateKey;
 }
 
 module.exports = { fetchBandsForPolygon, isGEEConfigured, initGEE, buildDateWindows };
