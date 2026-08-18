@@ -33,24 +33,32 @@ app.set('trust proxy', 1);
 // e.g. "https://my-app.vercel.app,https://my-app.railway.app"
 // When CORS_ORIGIN is not set (local dev without .env), allow any origin.
 const CORS_ORIGINS = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim().replace(/\/$/, ''))
   : true;
 
 console.log('[CORS] Allowed origins:', CORS_ORIGINS === true ? '*' : CORS_ORIGINS);
 
 app.use(cors({
   origin(requestOrigin, callback) {
-    // Allow requests with no origin (server-to-server, Postman, curl)
+    // Allow requests with no origin (server-to-server, Postman, curl, health checks)
     if (!requestOrigin) return callback(null, true);
-    // If CORS_ORIGINS is true (wildcard) allow everything
+    // Wildcard — allow everything (local dev with no CORS_ORIGIN set)
     if (CORS_ORIGINS === true) return callback(null, true);
-    if (CORS_ORIGINS.includes(requestOrigin)) return callback(null, true);
-    callback(new Error(`CORS: origin '${requestOrigin}' not allowed`));
+    // Exact match check (strip trailing slash from incoming origin too)
+    const clean = requestOrigin.replace(/\/$/, '');
+    if (CORS_ORIGINS.includes(clean)) return callback(null, true);
+    // Reject — return null (not an Error) so cors() sends 204 without headers
+    // rather than triggering the global 500 error handler
+    console.warn(`[CORS] Rejected origin: "${requestOrigin}"`);
+    return callback(null, false);
   },
   methods:        ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials:    true,
 }));
+
+// Explicit OPTIONS preflight — Express 5 requires named wildcard syntax
+app.options('/{*path}', cors());
 
 // ─── Cookie Parser ────────────────────────────────────────────────────────────
 // Must come BEFORE any route handler that reads req.cookies
