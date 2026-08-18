@@ -11,23 +11,22 @@
 
 require('dotenv').config();
 
-const app        = require('./app');
-const { connectDB } = require('./config/db');
+const app   = require('./app');
+const { pool } = require('./config/db');
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
 async function startServer() {
   try {
-    // ── Connect to PostgreSQL + verify PostGIS ────────────────
-    await connectDB();
-
-    // ── Start HTTP server ─────────────────────────────────────
+    // ── Start HTTP server first — don't block on DB ───────────
+    // DB connection is verified lazily on first request.
+    // This prevents hostel/firewall network timeouts from crashing startup.
     const server = app.listen(PORT, HOST, () => {
       console.log('\n╔════════════════════════════════════════════╗');
       console.log('║  Satellite Environmental Analytics API     ║');
       console.log('╠════════════════════════════════════════════╣');
-      console.log(`║  Server  : http://${HOST}:${PORT.toString().padEnd(24)}║`);
+      console.log(`║  Server  : http://${HOST}:${PORT.toString().padEnd(17)}║`);
       console.log(`║  Env     : ${(process.env.NODE_ENV || 'development').padEnd(32)}║`);
       console.log('╠════════════════════════════════════════════╣');
       console.log('║  Endpoints:                                ║');
@@ -39,11 +38,13 @@ async function startServer() {
       console.log('╚════════════════════════════════════════════╝\n');
     });
 
+    // ── DB connects lazily on first query — no startup ping needed ──
+    console.log('[Server] Database pool initialized (connects on first query).');
+
     // ── Graceful shutdown ─────────────────────────────────────
     const shutdown = (signal) => {
       console.log(`\n[Server] Received ${signal}. Shutting down gracefully...`);
       server.close(async () => {
-        const { pool } = require('./config/db');
         await pool.end();
         console.log('[Server] Database pool closed. Bye.');
         process.exit(0);

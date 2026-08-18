@@ -3,9 +3,16 @@
 /**
  * analyticsRoutes.js
  * Mounts all analytics endpoints under /api/analytics
+ *
+ * POST /process — t1_bands / t2_bands are now OPTIONAL.
+ *   If omitted AND GEE is configured, the controller will call Google Earth
+ *   Engine to fetch real Sentinel-2 median composite band values for the
+ *   supplied geojson_polygon.
+ *   If not omitted, the manually supplied values are used as-is (useful for
+ *   testing or when GEE is not configured).
  */
 
-const { Router }            = require('express');
+const { Router }             = require('express');
 const { body, param, query } = require('express-validator');
 const {
   processAnalytics,
@@ -14,27 +21,36 @@ const {
 
 const router = Router();
 
-// ─── Validation schemas ───────────────────────────────────────────────────────
+// ─── Reusable band schema (now optional) ──────────────────────────────────────
 
 const bandSchema = (prefix) => [
   body(`${prefix}.nir`)
+    .optional()
     .isFloat({ min: 0, max: 1 })
     .withMessage(`${prefix}.nir must be a float between 0 and 1`),
   body(`${prefix}.red`)
+    .optional()
     .isFloat({ min: 0, max: 1 })
     .withMessage(`${prefix}.red must be a float between 0 and 1`),
   body(`${prefix}.swir`)
+    .optional()
     .isFloat({ min: 0, max: 1 })
     .withMessage(`${prefix}.swir must be a float between 0 and 1`),
   body(`${prefix}.sarIntensity`)
+    .optional()
     .isFloat({ min: 0 })
     .withMessage(`${prefix}.sarIntensity must be a non-negative float`),
 ];
 
+// ─── Process validation ───────────────────────────────────────────────────────
+
 const processValidation = [
+  // Required: which region to record the result against
   body('region_id')
     .isUUID()
     .withMessage('region_id must be a valid UUID'),
+
+  // Required: time window
   body('t1')
     .isISO8601()
     .withMessage('t1 must be a valid ISO 8601 timestamp'),
@@ -47,15 +63,30 @@ const processValidation = [
       }
       return true;
     }),
+
+  // Optional: GeoJSON polygon OR raw coordinate ring [[lng,lat],...]
+  // Used for GEE band extraction when t1_bands/t2_bands are not supplied.
+  body('geojson_polygon')
+    .optional()
+    .custom((val) => {
+      if (typeof val !== 'object' && !Array.isArray(val)) {
+        throw new Error('geojson_polygon must be a GeoJSON geometry object or coordinate array');
+      }
+      return true;
+    }),
+
+  // Optional manual band overrides (skips GEE when both are present)
   ...bandSchema('t1_bands'),
   ...bandSchema('t2_bands'),
 
-  // Optional bounding box
+  // Optional bounding box (used for PostGIS intersection check only)
   body('bounding_box.minLng').optional().isFloat({ min: -180, max: 180 }),
   body('bounding_box.maxLng').optional().isFloat({ min: -180, max: 180 }),
-  body('bounding_box.minLat').optional().isFloat({ min: -90,  max: 90 }),
-  body('bounding_box.maxLat').optional().isFloat({ min: -90,  max: 90 }),
+  body('bounding_box.minLat').optional().isFloat({ min: -90,  max: 90  }),
+  body('bounding_box.maxLat').optional().isFloat({ min: -90,  max: 90  }),
 ];
+
+// ─── Timeseries validation (unchanged) ───────────────────────────────────────
 
 const timeseriesValidation = [
   param('id')
@@ -91,14 +122,15 @@ const timeseriesValidation = [
 
 /**
  * @route   POST /api/analytics/process
- * @desc    Process satellite band data between T1 and T2, save to analytics_log
- * @access  Public (add auth middleware when ready)
+ * @desc    Process satellite analysis for a region.
+ *          Band values are fetched from GEE if not supplied manually.
+ * @access  Public (add authMiddleware when ready)
  */
 router.post('/process', processValidation, processAnalytics);
 
 /**
  * @route   GET /api/analytics/region/:id/timeseries
- * @desc    Fetch historical NDVI/NDWI trends for a region over a date range
+ * @desc    Historical NDVI/NDWI trends for a region
  * @access  Public
  */
 router.get('/region/:id/timeseries', timeseriesValidation, getTimeseries);

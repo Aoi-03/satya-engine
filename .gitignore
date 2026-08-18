@@ -6,6 +6,12 @@ node_modules/
 .env.local
 .env.production
 
+# GEE service account key — contains a private key, NEVER commit to git
+config/gee-key.json
+gee-service-account-key.json
+*-service-account-key.json
+*-private-key.json
+
 # Logs
 logs/
 *.log
@@ -22,3 +28,6 @@ Thumbs.db
 # Build output (if added later)
 dist/
 build/
+
+# Old backup backend
+/old-backend/

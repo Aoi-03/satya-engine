@@ -76,6 +76,7 @@ async function getActiveAlerts(req, res) {
         al.sar_delta_db,
         al.alert_severity,
         al.flags,
+        al.raw_bands,
         (
           SELECT COUNT(*)
           FROM analytics_log sub
@@ -107,7 +108,12 @@ async function getActiveAlerts(req, res) {
     ]);
 
     const total  = parseInt(countResult.rows[0].total, 10);
-    const alerts = alertsResult.rows;
+    const alerts = alertsResult.rows.map(a => {
+      if (typeof a.raw_bands === 'string') {
+        try { a.raw_bands = JSON.parse(a.raw_bands); } catch (e) {}
+      }
+      return a;
+    });
 
     // ── Severity breakdown summary ───────────────────────────
     const severitySummary = _buildSeveritySummary(alerts);
