@@ -148,11 +148,16 @@ async function processAnalytics(req, res) {
 
     // ── 4. Run geoEngine analysis ──────────────────────────────────────────
     const analysis = runCombinedAnalysis(resolvedT1Bands, resolvedT2Bands);
-    
-    // Inject GEE extra visualizations if available
+
+    // Inject GEE extra visualizations into the analysis object so the
+    // frontend can read them from analysis.anomalyTilesUrl and
+    // analysis.historicalThumbnails directly.
     if (req.geeExtras) {
-      analysis.anomalyTilesUrl = req.geeExtras.anomalyTilesUrl;
-      analysis.historicalThumbnails = req.geeExtras.historicalThumbnails;
+      analysis.anomalyTilesUrl         = req.geeExtras.anomalyTilesUrl         ?? null;
+      analysis.historicalThumbnails    = req.geeExtras.historicalThumbnails    ?? [];
+    } else {
+      analysis.anomalyTilesUrl         = null;
+      analysis.historicalThumbnails    = [];
     }
 
     // ── 5. Persist to analytics_log ───────────────────────────────────────
