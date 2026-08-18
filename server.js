@@ -14,7 +14,7 @@ require('dotenv').config();
 const app   = require('./app');
 const { pool } = require('./config/db');
 
-const PORT = parseInt(process.env.PORT, 10) || 3000;
+const PORT = parseInt(process.env.PORT, 10) || 4000;  // Railway sets PORT automatically
 const HOST = process.env.HOST || '0.0.0.0';
 
 async function startServer() {

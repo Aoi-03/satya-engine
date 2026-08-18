@@ -5,40 +5,48 @@
  *
  * Google Earth Engine — server-side service account authentication.
  *
- * Auth source: config/gee-key.json  (never committed — gitignored)
- * Project:     read from gee-key.json → project_id  (or GEE_PROJECT env override)
+ * Credential loading priority (Railway-safe):
+ *   1. GEE_SERVICE_ACCOUNT_KEY env var — JSON string of the key file contents
+ *      Set this on Railway: Settings → Variables → add GEE_SERVICE_ACCOUNT_KEY
+ *   2. GEE_KEY_JSON env var — alias for the above
+ *   3. Local file: config/gee-key.json — for local development only
  *
- * Datasets used:
- *   Optical  — COPERNICUS/S2_SR_HARMONIZED  (Sentinel-2 Level-2A)
- *               B4  = Red   (665 nm)
- *               B8  = NIR   (842 nm)
- *               B11 = SWIR1 (1610 nm)
- *
- *   Radar    — OPERA/RTC/L2_V1/S1  (OPERA Sentinel-1 RTC)
- *               VV  = VV polarisation backscatter (dB, float)
- *
- * Both are filtered strictly to the user-drawn polygon geometry.
- * Mean values are extracted via ee.Reducer.mean() / reduceRegion().
+ * If none of the above are available the service starts in degraded mode:
+ * all GEE calls immediately throw, analyticsController catches the error
+ * and falls back to baseline band estimates so the API still returns results.
  */
 
 const path = require('path');
 const ee   = require('@google/earthengine');
 
-// ── Key file ──────────────────────────────────────────────────────────────────
-// Attempt to load from environment variable first (for Railway/production),
-// then fallback to local config/gee-key.json
+// ── Credential loading (never throws at module level) ─────────────────────────
 let privateKey = null;
-try {
-  const envKey = process.env.GEE_SERVICE_ACCOUNT_KEY || process.env.GEE_KEY_JSON;
-  if (envKey) {
-    privateKey = JSON.parse(envKey);
-  } else {
+
+(function loadCredentials() {
+  // Option 1 & 2: environment variable (Railway / any hosted env)
+  const envJson = process.env.GEE_SERVICE_ACCOUNT_KEY || process.env.GEE_KEY_JSON;
+  if (envJson) {
+    try {
+      privateKey = typeof envJson === 'string' ? JSON.parse(envJson) : envJson;
+      console.log('[GEE] Loaded credentials from environment variable.');
+      return;
+    } catch (e) {
+      console.warn('[GEE] GEE_SERVICE_ACCOUNT_KEY env var is not valid JSON:', e.message);
+    }
+  }
+
+  // Option 3: local key file (dev only — gitignored)
+  try {
     const KEY_PATH = path.resolve(__dirname, '../config/gee-key.json');
     privateKey = require(KEY_PATH);
+    console.log('[GEE] Loaded credentials from config/gee-key.json.');
+  } catch {
+    console.warn(
+      '[GEE] No credentials found. Set GEE_SERVICE_ACCOUNT_KEY on Railway, ' +
+      'or place config/gee-key.json locally. GEE calls will use fallback band values.',
+    );
   }
-} catch (err) {
-  console.warn('[GEE] Warning: Could not load GEE service account key.', err.message);
-}
+})();
 
 // Project: prefer explicit env override, fall back to key file's project_id
 const GEE_PROJECT = process.env.GEE_PROJECT || (privateKey ? privateKey.project_id : null);

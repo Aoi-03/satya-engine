@@ -29,11 +29,25 @@ app.use(helmet());
 // trust first proxy so req.ip resolves correctly behind nginx / Supabase edge
 app.set('trust proxy', 1);
 
+// CORS — supports multiple comma-separated origins in CORS_ORIGIN env var,
+// e.g. "https://my-app.vercel.app,https://my-app.railway.app"
+// When CORS_ORIGIN is not set (local dev without .env), allow any origin.
+const CORS_ORIGINS = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+  : true;   // true = allow all (safe for local dev, always set CORS_ORIGIN in prod)
+
 app.use(cors({
-  origin:         process.env.CORS_ORIGIN || 'http://localhost:3000',
+  origin(requestOrigin, callback) {
+    // Allow requests with no origin (server-to-server, Postman, curl)
+    if (!requestOrigin) return callback(null, true);
+    // If CORS_ORIGINS is true (wildcard) allow everything
+    if (CORS_ORIGINS === true) return callback(null, true);
+    if (CORS_ORIGINS.includes(requestOrigin)) return callback(null, true);
+    callback(new Error(`CORS: origin '${requestOrigin}' not allowed`));
+  },
   methods:        ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials:    true,   // required for httpOnly cookie auth
+  credentials:    true,
 }));
 
 // ─── Cookie Parser ────────────────────────────────────────────────────────────
