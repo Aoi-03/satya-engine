@@ -29,8 +29,9 @@ const ee   = require('@google/earthengine');
 // then fallback to local config/gee-key.json
 let privateKey = null;
 try {
-  if (process.env.GEE_SERVICE_ACCOUNT_KEY) {
-    privateKey = JSON.parse(process.env.GEE_SERVICE_ACCOUNT_KEY);
+  const envKey = process.env.GEE_SERVICE_ACCOUNT_KEY || process.env.GEE_KEY_JSON;
+  if (envKey) {
+    privateKey = JSON.parse(envKey);
   } else {
     const KEY_PATH = path.resolve(__dirname, '../config/gee-key.json');
     privateKey = require(KEY_PATH);
