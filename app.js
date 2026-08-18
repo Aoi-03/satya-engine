@@ -34,7 +34,9 @@ app.set('trust proxy', 1);
 // When CORS_ORIGIN is not set (local dev without .env), allow any origin.
 const CORS_ORIGINS = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
-  : true;   // true = allow all (safe for local dev, always set CORS_ORIGIN in prod)
+  : true;
+
+console.log('[CORS] Allowed origins:', CORS_ORIGINS === true ? '*' : CORS_ORIGINS);
 
 app.use(cors({
   origin(requestOrigin, callback) {
